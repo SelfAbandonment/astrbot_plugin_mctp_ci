@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.7 - 2026-10-31
+
+### Fixed
+
+- 移除 `requirements.txt` 里的 `aiohttp`：AstrBot 核心已固定 `aiohttp==3.13.5`，插件声明 `>=3.14.5` 会触发核心依赖保护，导致插件更新失败
+- 插件依赖只保留 Pillow，避免和 AstrBot 核心约束冲突
+
 ## 0.2.6 - 2026-10-31
 
 ### Changed

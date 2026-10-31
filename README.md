@@ -55,7 +55,7 @@ git clone https://github.com/SelfAbandonment/astrbot_plugin_mctp_ci.git
    - `at_all_on_failure`：失败是否 @全体，默认关
 4. 在目标群发 `/ci_test`，应收到一张“链路正常”的测试卡片。
 
-> 依赖 `Pillow` 和 `aiohttp`（见 `requirements.txt`），AstrBot 镜像通常已自带；缺失时在 AstrBot 环境安装。
+> 只声明 `Pillow`（见 `requirements.txt`）；`aiohttp` 由 AstrBot 核心提供，不要重复声明，否则会和核心版本约束冲突。
 
 ## dashboard 模式（只能开 6185）
 
