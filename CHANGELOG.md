@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.6 - 2026-10-31
+
+### Changed
+
+- `metadata.yaml` 增加 `display_name: MCTP Beacon` 与 `short_desc`
+- `name` 保持 `astrbot_plugin_mctp_ci`：AstrBot 用目录名加载，但 `name` 会参与 `plugin_id = author/name`，展示名应放 `display_name`
+
 ## 0.2.5 - 2026-10-31
 
 ### Changed
