@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.4 - 2026-10-31
+
+### Changed
+
+- 产品命名 **MCTP Beacon（MCTP 信标）**
+- 插件 ID 保持 `astrbot_plugin_mctp_ci`，已安装实例无需重装
+
 ## 0.2.3 - 2026-10-31
 
 ### Added

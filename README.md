@@ -1,4 +1,6 @@
-# astrbot_plugin_mctp_ci
+# MCTP Beacon
+
+> `astrbot_plugin_mctp_ci` · CI 结果像信号一样，以卡片形式发到群里。
 
 [![CI](https://github.com/SelfAbandonment/astrbot_plugin_mctp_ci/actions/workflows/ci.yml/badge.svg)](https://github.com/SelfAbandonment/astrbot_plugin_mctp_ci/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -6,6 +8,8 @@
 
 MCTP CI/CD 的 AstrBot 通知插件：CI 推送一条 JSON，插件用 AstrBot 自带的
 `html_render`（HTML + Chromium）渲染成 PNG 卡片，再主动发到群里。
+
+> 产品名叫 **MCTP Beacon（信标）**；插件 ID 保持 `astrbot_plugin_mctp_ci`，避免已安装实例重装和重新绑定。
 
 比直连 AstrBot HTTP API 多出来的能力：
 

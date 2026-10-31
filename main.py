@@ -53,8 +53,8 @@ DEDUP_MAX = 100
 @register(
     PLUGIN_NAME,
     "SelfAbandonment",
-    "MCTP CI/CD 美观通知卡片（Jenkins / GitHub Actions）",
-    "0.2.3",
+    "MCTP Beacon · CI/CD 美观通知卡片（Jenkins / GitHub Actions）",
+    "0.2.4",
 )
 class MctpCiNotifier(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
