@@ -131,7 +131,9 @@ curl -fsS -X POST "http://<AstrBot地址>:6199/mctp-ci" \
 |---|---|
 | `/ci_bind` | 把当前会话绑定为通知接收方 |
 | `/ci_unbind` | 解除当前会话绑定 |
-| `/ci_targets` | 查看已绑定会话 |
+| `/ci_unbind <序号>` | 解除指定会话（序号见 `/ci_targets`） |
+| `/ci_unbind all` | 清空全部绑定 |
+| `/ci_targets` | 查看已绑定会话、序号和来源 |
 | `/ci_test` | 发一张中性的“链路正常”测试卡片（不再显示假的失败数据） |
 
 ## Jenkins 接入示例

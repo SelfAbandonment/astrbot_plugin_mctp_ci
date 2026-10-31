@@ -8,7 +8,9 @@ from core import (  # noqa: E402
     STATUS_META,
     build_card_html,
     build_plain_text,
+    merge_targets,
     normalize_payload,
+    remove_targets,
     sample_payload,
     status_meta,
     test_payload,
@@ -97,6 +99,34 @@ class TokenTest(unittest.TestCase):
         self.assertFalse(verify_token("abc", "abd"))
         self.assertFalse(verify_token("", "abc"))
         self.assertFalse(verify_token("abc", ""))
+
+
+class TargetsTest(unittest.TestCase):
+    def test_merge_dedupes_and_keeps_order(self):
+        merged = merge_targets(
+            ["aiocqhttp:GroupMessage:1", "aiocqhttp:FriendMessage:2"],
+            ["aiocqhttp:FriendMessage:2", "aiocqhttp:GroupMessage:3"],
+        )
+        self.assertEqual(
+            merged,
+            [
+                "aiocqhttp:GroupMessage:1",
+                "aiocqhttp:FriendMessage:2",
+                "aiocqhttp:GroupMessage:3",
+            ],
+        )
+
+    def test_remove_clears_both_sources(self):
+        configured, stored = remove_targets(
+            ["aiocqhttp:GroupMessage:1", "aiocqhttp:FriendMessage:2"],
+            ["aiocqhttp:FriendMessage:2", "aiocqhttp:GroupMessage:3"],
+            ["aiocqhttp:FriendMessage:2"],
+        )
+        self.assertEqual(configured, ["aiocqhttp:GroupMessage:1"])
+        self.assertEqual(stored, ["aiocqhttp:GroupMessage:3"])
+
+    def test_invalid_targets_ignored(self):
+        self.assertEqual(merge_targets(["bad", "  "], [None]), [])
 
 
 if __name__ == "__main__":

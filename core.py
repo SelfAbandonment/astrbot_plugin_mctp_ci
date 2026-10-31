@@ -350,6 +350,25 @@ def verify_token(provided: str, expected: str) -> bool:
     return hmac.compare_digest(provided, expected)
 
 
+def merge_targets(configured, stored) -> list[str]:
+    """合并配置与 KV 目标，去重并保持顺序。"""
+    result: list[str] = []
+    for item in list(configured or []) + list(stored or []):
+        text = str(item or "").strip()
+        if text and ":" in text and text not in result:
+            result.append(text)
+    return result
+
+
+def remove_targets(configured, stored, removals) -> tuple[list[str], list[str]]:
+    """同时从配置与 KV 中移除目标，返回 (configured, stored)。"""
+    blocked = {str(item).strip() for item in removals if str(item).strip()}
+    return (
+        [item for item in (configured or []) if str(item).strip() not in blocked],
+        [item for item in (stored or []) if str(item).strip() not in blocked],
+    )
+
+
 def crop_card(image_path: str, pad: int = 18) -> None:
     """裁掉渲染器固定视口留下的透明/空白边缘。"""
     try:

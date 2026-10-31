@@ -28,7 +28,9 @@ try:  # 兼容 AstrBot 以包/单文件两种方式加载插件
         build_card_html,
         build_plain_text,
         crop_card,
+        merge_targets,
         normalize_payload,
+        remove_targets,
         test_payload,
         verify_token,
     )
@@ -38,7 +40,9 @@ except ImportError:  # pragma: no cover - 单文件加载时的兜底
         build_card_html,
         build_plain_text,
         crop_card,
+        merge_targets,
         normalize_payload,
+        remove_targets,
         test_payload,
         verify_token,
     )
@@ -54,7 +58,7 @@ DEDUP_MAX = 100
     PLUGIN_NAME,
     "SelfAbandonment",
     "MCTP Beacon · CI/CD 美观通知卡片（Jenkins / GitHub Actions）",
-    "0.2.7",
+    "0.2.8",
 )
 class MctpCiNotifier(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
@@ -133,22 +137,36 @@ class MctpCiNotifier(Star):
         logger.info("[MCTP-CI] webhook 已停止")
 
     # ------------------------------------------------------------------ 目标会话
-    async def _targets(self) -> list[str]:
+    def _configured_targets(self) -> list[str]:
         configured = self.config.get("targets") or []
         if isinstance(configured, str):
             configured = [configured]
+        return [str(item or "").strip() for item in configured if str(item or "").strip()]
+
+    async def _stored_targets(self) -> list[str]:
         stored = await self.get_kv_data("targets", [])
         if not isinstance(stored, list):
-            stored = []
-        result: list[str] = []
-        for item in list(configured) + list(stored):
-            text = str(item or "").strip()
-            if text and ":" in text and text not in result:
-                result.append(text)
-        return result
+            return []
+        return [str(item or "").strip() for item in stored if str(item or "").strip()]
+
+    async def _targets(self) -> list[str]:
+        return merge_targets(self._configured_targets(), await self._stored_targets())
 
     async def _store_targets(self, targets: list[str]) -> None:
         await self.put_kv_data("targets", targets)
+
+    def _save_configured_targets(self, targets: list[str]) -> None:
+        self.config["targets"] = targets
+        save = getattr(self.config, "save_config", None)
+        if callable(save):
+            save()
+
+    async def _remove_targets(self, removals: list[str]) -> None:
+        configured, stored = remove_targets(
+            self._configured_targets(), await self._stored_targets(), removals
+        )
+        await self._store_targets(stored)
+        self._save_configured_targets(configured)
 
     # ------------------------------------------------------------------ 公共处理
     async def _dispatch(self, provided_token: str, data: Any) -> tuple[int, dict[str, Any]]:
@@ -261,13 +279,23 @@ class MctpCiNotifier(Star):
         return web.json_response(body, status=status)
 
     # ------------------------------------------------------------------ 指令
+    @staticmethod
+    def _command_arg(event: AstrMessageEvent) -> str:
+        raw = str(getattr(event, "message_str", "") or "").strip()
+        parts = raw.split()
+        if len(parts) > 1:
+            return parts[1].strip()
+        return raw if raw.isdigit() or raw.lower() == "all" else ""
+
     @filter.command("ci_help")
     async def ci_help(self, event: AstrMessageEvent):
         """查看 CI 通知指令说明。"""
         yield event.plain_result(
             "CI 通知指令：\n"
             "/ci_bind 绑定当前会话\n"
-            "/ci_unbind 解除绑定\n"
+            "/ci_unbind 解除当前会话\n"
+            "/ci_unbind <序号> 解除指定会话（序号见 /ci_targets）\n"
+            "/ci_unbind all 清空全部绑定\n"
             "/ci_targets 查看已绑定会话\n"
             "/ci_test 发一张测试卡片"
         )
@@ -280,30 +308,64 @@ class MctpCiNotifier(Star):
         if umo in targets:
             yield event.plain_result("这个会话已经绑定过了。")
             return
-        targets.append(umo)
-        await self._store_targets(targets)
-        yield event.plain_result(f"已绑定 CI 通知（共 {len(targets)} 个会话）。")
+        stored = await self._stored_targets()
+        stored.append(umo)
+        await self._store_targets(stored)
+        yield event.plain_result(f"已绑定 CI 通知（共 {len(targets) + 1} 个会话）。")
 
     @filter.command("ci_unbind")
     async def ci_unbind(self, event: AstrMessageEvent):
-        """解除当前会话的 CI 通知绑定。"""
-        umo = event.unified_msg_origin
+        """解除绑定：默认当前会话，支持序号或 all。"""
         targets = await self._targets()
-        if umo not in targets:
-            yield event.plain_result("这个会话还没有绑定。")
+        if not targets:
+            yield event.plain_result("还没有绑定任何会话。")
             return
-        targets = [item for item in targets if item != umo]
-        await self._store_targets(targets)
-        yield event.plain_result(f"已解除绑定（剩余 {len(targets)} 个会话）。")
+
+        arg = self._command_arg(event)
+        if arg.lower() == "all":
+            removals = targets
+            label = "全部会话"
+        elif arg.isdigit():
+            index = int(arg)
+            if not 1 <= index <= len(targets):
+                yield event.plain_result(f"序号超出范围：1-{len(targets)}")
+                return
+            removals = [targets[index - 1]]
+            label = f"第 {index} 个会话"
+        elif arg:
+            yield event.plain_result("用法：/ci_unbind、/ci_unbind 2、/ci_unbind all")
+            return
+        else:
+            removals = [event.unified_msg_origin]
+            label = "当前会话"
+
+        existing = [item for item in removals if item in targets]
+        if not existing:
+            yield event.plain_result("要解除的会话不在绑定列表里。")
+            return
+
+        await self._remove_targets(existing)
+        remaining = await self._targets()
+        yield event.plain_result(f"已解除 {label} 的绑定（剩余 {len(remaining)} 个会话）。")
 
     @filter.command("ci_targets")
     async def ci_targets(self, event: AstrMessageEvent):
-        """查看已绑定的会话。"""
+        """查看已绑定的会话与来源。"""
         targets = await self._targets()
         if not targets:
             yield event.plain_result("还没有绑定任何会话，先发 /ci_bind。")
             return
-        lines = [f"{idx + 1}. {item}" for idx, item in enumerate(targets)]
+        configured = set(self._configured_targets())
+        stored = set(await self._stored_targets())
+        lines = []
+        for idx, item in enumerate(targets, start=1):
+            if item in configured and item in stored:
+                source = "配置+会话"
+            elif item in configured:
+                source = "配置"
+            else:
+                source = "会话"
+            lines.append(f"{idx}. {item}（{source}）")
         yield event.plain_result("已绑定会话：\n" + "\n".join(lines))
 
     @filter.command("ci_test")
