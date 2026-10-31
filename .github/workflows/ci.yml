@@ -23,6 +23,13 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
 
+      - name: Guard AstrBot core dependencies
+        run: |
+          if grep -Eiq '^aiohttp([<>=!~ ]|$)' requirements.txt; then
+            echo "aiohttp is provided by AstrBot core; do not declare it in requirements.txt"
+            exit 1
+          fi
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
