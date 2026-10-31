@@ -1,6 +1,6 @@
-name: MCTP Beacon
+name: astrbot_plugin_mctp_ci
 desc: MCTP Beacon · CI/CD 美观通知卡片（Jenkins / GitHub Actions）
-version: 0.2.4
+version: 0.2.5
 author: SelfAbandonment
 repo: https://github.com/SelfAbandonment/astrbot_plugin_mctp_ci
 astrbot_version: ">=4.9.2"

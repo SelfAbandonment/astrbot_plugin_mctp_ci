@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.5 - 2026-10-31
+
+### Changed
+
+- aiohttp 下限提升到 `>=3.14.5`
+- Pillow 上限锁到 `<13`，保持 Python 3.10 兼容（AstrBot 仍有 3.10 用户）
+
 ## 0.2.4 - 2026-10-31
 
 ### Changed
