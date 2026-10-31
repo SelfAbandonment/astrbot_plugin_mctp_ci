@@ -1,0 +1,46 @@
+name: Bug report
+description: 报告插件问题
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请先确认 AstrBot 版本、插件版本和 `mode`（standalone/dashboard）。
+  - type: input
+    id: astrbot-version
+    attributes:
+      label: AstrBot 版本
+      placeholder: v4.29.3
+    validations:
+      required: true
+  - type: input
+    id: plugin-version
+    attributes:
+      label: 插件版本
+      placeholder: 0.2.3
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: 接入模式
+      options:
+        - dashboard
+        - standalone
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 现象
+      description: 包括 HTTP 状态、AstrBot 日志里的 `[MCTP-CI]` 行
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: 相关配置
+      description: 不要粘贴 Token/API Key/真实 UMO
+    validations:
+      required: false

@@ -1,0 +1,35 @@
+{
+  "mode": {
+    "description": "接入模式：standalone=插件自己监听端口；dashboard=复用 AstrBot 6185 端口（只能开 6185 时用这个）",
+    "type": "string",
+    "options": ["standalone", "dashboard"],
+    "default": "standalone"
+  },
+  "webhook_token": {
+    "description": "CI Webhook 鉴权 Token（请求头 X-CI-Token）",
+    "type": "string",
+    "default": "",
+    "secret": true
+  },
+  "listen_host": {
+    "description": "standalone 模式的监听地址（dashboard 模式忽略）",
+    "type": "string",
+    "default": "0.0.0.0"
+  },
+  "listen_port": {
+    "description": "standalone 模式的监听端口（dashboard 模式忽略）",
+    "type": "int",
+    "default": 6199
+  },
+  "targets": {
+    "description": "默认通知会话（可留空，在群里发 /ci_bind 绑定）",
+    "type": "list",
+    "default": [],
+    "_special": "umo"
+  },
+  "at_all_on_failure": {
+    "description": "失败通知是否 @全体成员",
+    "type": "bool",
+    "default": false
+  }
+}
