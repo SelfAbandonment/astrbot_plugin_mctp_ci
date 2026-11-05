@@ -126,6 +126,7 @@ curl -fsS -X POST "http://<AstrBot地址>:6199/mctp-ci" \
 
 同一 `repo+event+status+title+url+commit` 在 2 分钟内对每个目标最多成功发送一次，避免 Jenkins 重试刷屏；失败目标会在重试时单独补发，没有绑定会话时不会消耗去重窗口。图片卡片后会附带可点击/复制的构建链接文本。
 失败通知包含 `actor` 且匹配 `author_mentions` 时，会在每个绑定群里 @ 该作者映射的所有 QQ 号；映射可一对多、登录名不区分大小写。作者未配置映射时不 @任何人。映射配置生效时优先于 `at_all_on_failure`；完全未配置映射时保留原有 @全体选项。
+生产部署生命周期应由实际运行部署的 Jenkins job 在 start/success/failure/rollback 时调用通知入口，设置 `event: "deploy"`、`status`、`actor`、`url` 和当前结果明细。release workflow 收到 Jenkins 的 HTTP 接收响应不能当作部署成功；回滚状态需由 Jenkins 部署逻辑显式报告。
 
 ## 指令
 
