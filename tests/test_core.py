@@ -6,6 +6,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from core import (  # noqa: E402
     STATUS_META,
+    DeliveryLedger,
     build_card_html,
     build_plain_text,
     merge_targets,
@@ -77,12 +78,43 @@ class CardTest(unittest.TestCase):
         html = build_card_html(payload)
         self.assertIn("单元测试失败", html)
         self.assertIn("MCTP-FE", html)
+        self.assertIn("查看构建", html)
+        self.assertIn("overflow-wrap: anywhere", html)
 
     def test_test_payload_is_neutral_success(self):
         payload = test_payload()
         self.assertEqual(payload["status"], "success")
         self.assertIn("链路正常", payload["title"])
         self.assertEqual(payload["details"][0].startswith("触发方式"), True)
+
+    def test_delivery_ledger_retries_only_undelivered_targets(self):
+        ledger = DeliveryLedger(ttl=10)
+        self.assertEqual(ledger.pending("notification", [], 0), [])
+        self.assertEqual(
+            ledger.pending("notification", ["group-1", "group-2"], 0),
+            ["group-1", "group-2"],
+        )
+
+        ledger.mark_delivered("notification", ["group-1"], 1)
+        self.assertEqual(ledger.pending("notification", ["group-1", "group-2"], 2), ["group-2"])
+        ledger.mark_delivered("notification", ["group-2"], 2)
+        self.assertTrue(ledger.complete("notification", ["group-1", "group-2"]))
+        self.assertEqual(ledger.pending("notification", ["group-1", "group-2"], 3), [])
+        self.assertEqual(
+            ledger.pending("notification", ["group-1", "group-2"], 14),
+            ["group-1", "group-2"],
+        )
+
+    def test_delivery_ledger_evicts_old_entries(self):
+        ledger = DeliveryLedger(ttl=120, max_entries=2)
+        ledger.pending("first", ["group"], 1)
+        ledger.mark_delivered("first", ["group"], 1)
+        ledger.pending("second", ["group"], 2)
+        ledger.mark_delivered("second", ["group"], 2)
+        ledger.pending("third", ["group"], 3)
+
+        self.assertFalse(ledger.complete("first", ["group"]))
+        self.assertTrue(ledger.complete("second", ["group"]))
 
 
 class PlainTextTest(unittest.TestCase):

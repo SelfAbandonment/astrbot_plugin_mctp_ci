@@ -123,7 +123,7 @@ curl -fsS -X POST "http://<AstrBot地址>:6199/mctp-ci" \
 | `details` | 否 | 字符串数组，最多 8 条 |
 | `url` | 否 | 构建/PR/部署链接 |
 
-同一 `repo+event+status+title+url+commit` 在 2 分钟内只发一次，避免 Jenkins 重试刷屏。
+同一 `repo+event+status+title+url+commit` 在 2 分钟内对每个目标最多成功发送一次，避免 Jenkins 重试刷屏；失败目标会在重试时单独补发，没有绑定会话时不会消耗去重窗口。图片卡片后会附带可点击/复制的构建链接文本。
 
 ## 指令
 
@@ -170,11 +170,13 @@ post {
 ## 排错
 
 - health 返回 200：端口/路由正常；
+- health 响应中的 `delivery_ok` / `last_error`：查看最近一次通知是否完整送达；`ok` 只表示健康接口可用；
 - 401：`X-CI-Token` 与插件配置不一致（dashboard 还要检查 API Key 是否有效）；
 - 403：API Key 没有 `plugin` scope；
 - 409：还没有绑定会话，先在目标群发 `/ci_bind`；
 - 503：`webhook_token` 没配置；
 - 卡片没图：检查 AstrBot 的 t2i/Chromium 是否正常，插件会自动回退纯文本。
+- `at_all_on_failure` 在图片发送和纯文本回退两种路径都会生效。
 
 ## 开发与测试
 
