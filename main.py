@@ -25,10 +25,12 @@ from astrbot.api.web import request as web_request
 try:  # 兼容 AstrBot 以包/单文件两种方式加载插件
     from .core import (
         RENDER_OPTIONS,
+        DeliveryLedger,
         build_card_html,
         build_plain_text,
         crop_card,
         merge_targets,
+        normalize_author_mentions,
         normalize_payload,
         remove_targets,
         test_payload,
@@ -37,10 +39,12 @@ try:  # 兼容 AstrBot 以包/单文件两种方式加载插件
 except ImportError:  # pragma: no cover - 单文件加载时的兜底
     from core import (
         RENDER_OPTIONS,
+        DeliveryLedger,
         build_card_html,
         build_plain_text,
         crop_card,
         merge_targets,
+        normalize_author_mentions,
         normalize_payload,
         remove_targets,
         test_payload,
@@ -50,22 +54,28 @@ except ImportError:  # pragma: no cover - 单文件加载时的兜底
 logger = logging.getLogger("astrbot")
 
 PLUGIN_NAME = "astrbot_plugin_mctp_ci"
-DEDUP_TTL = 120
-DEDUP_MAX = 100
 
 
 @register(
     PLUGIN_NAME,
     "SelfAbandonment",
     "MCTP Beacon · CI/CD 美观通知卡片（Jenkins / GitHub Actions）",
-    "0.2.8",
+    "0.2.9",
 )
 class MctpCiNotifier(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
         self.config = config
         self._runner: web.AppRunner | None = None
-        self._seen: dict[str, float] = {}
+        self._delivery = DeliveryLedger()
+        self._author_mentions, invalid_mentions = normalize_author_mentions(
+            self.config.get("author_mentions", [])
+        )
+        if invalid_mentions:
+            logger.warning(
+                "[MCTP-CI] 忽略了 %s 条格式无效的 author_mentions 配置",
+                invalid_mentions,
+            )
         self._last_error: str = ""
         self._mode = "standalone"
 
@@ -183,21 +193,32 @@ class MctpCiNotifier(Star):
             payload["event"],
             payload["status"],
         )
-        if payload["id"] in self._seen and time.time() - self._seen[payload["id"]] < DEDUP_TTL:
-            return 200, {"ok": True, "skipped": "duplicate"}
-        self._seen[payload["id"]] = time.time()
-        self._prune_seen()
-
         targets = await self._targets()
         if not targets:
+            self._last_error = "没有目标会话"
             return 409, {"ok": False, "error": "没有目标会话，先在群里发 /ci_bind"}
 
-        sent = await self._send_payload(payload, targets)
-        if sent == 0:
-            return 502, {"ok": False, "error": "所有目标发送失败，查看 AstrBot 日志"}
-        return 200, {"ok": True, "sent": sent, "event": payload["event"]}
+        pending = self._delivery.pending(payload["id"], targets, time.time())
+        if not pending:
+            self._last_error = ""
+            return 200, {"ok": True, "skipped": "duplicate"}
 
-    async def _send_payload(self, payload: dict[str, Any], targets: list[str]) -> int:
+        sent, failed = await self._send_payload(payload, pending)
+        self._delivery.mark_delivered(payload["id"], sent, time.time())
+        if failed:
+            self._last_error = f"发送失败：{len(failed)} 个目标未送达"
+            return 502, {
+                "ok": False,
+                "sent": len(sent),
+                "failed": len(failed),
+                "error": "部分目标发送失败，重试时只会重发未送达目标",
+            }
+        self._last_error = ""
+        return 200, {"ok": True, "sent": len(sent), "event": payload["event"]}
+
+    async def _send_payload(
+        self, payload: dict[str, Any], targets: list[str]
+    ) -> tuple[list[str], list[str]]:
         image_data = ""
         try:
             image_path = await self.html_render(
@@ -212,29 +233,48 @@ class MctpCiNotifier(Star):
             self._last_error = f"render: {exc}"
 
         text_fallback = build_plain_text(payload)
-        at_all = payload["status"] == "failure" and bool(
-            self.config.get("at_all_on_failure", False)
+        failure = payload["status"] == "failure"
+        at_all = (
+            failure
+            and bool(self.config.get("at_all_on_failure", False))
+            and not self._author_mentions
         )
+        mention_ids = []
+        if failure and self._author_mentions:
+            mention_ids = self._author_mentions.get(payload.get("actor", "").casefold(), [])
 
-        sent = 0
+        def append_mentions(chain: MessageChain) -> None:
+            if at_all:
+                chain.at_all()
+            else:
+                for user_id in mention_ids:
+                    chain.at(payload.get("actor") or "GitHub", user_id)
+
+        sent: list[str] = []
+        failed: list[str] = []
         for umo in targets:
             if image_data:
                 chain = MessageChain().base64_image(image_data)
-                if at_all:
-                    chain.at_all()
+                append_mentions(chain)
+                if payload.get("url"):
+                    chain.message(f"查看构建：{payload['url']}")
                 try:
                     await self.context.send_message(umo, chain)
-                    sent += 1
+                    sent.append(umo)
                     continue
                 except Exception as exc:  # noqa: BLE001 - 图片发送失败时回退纯文本
                     logger.warning("[MCTP-CI] 发送图片到 %s 失败：%s", umo, exc)
             try:
-                await self.context.send_message(umo, MessageChain().message(text_fallback))
-                sent += 1
+                fallback = MessageChain()
+                append_mentions(fallback)
+                fallback.message(text_fallback)
+                await self.context.send_message(umo, fallback)
+                sent.append(umo)
                 logger.info("[MCTP-CI] 已用纯文本回退发送到 %s", umo)
             except Exception as exc:  # noqa: BLE001 - 单个会话失败不影响其他会话
                 logger.warning("[MCTP-CI] 文本回退也失败 %s：%s", umo, exc)
-        return sent
+                failed.append(umo)
+        return sent, failed
 
     @staticmethod
     def _image_data(image_path: str) -> str:
@@ -242,15 +282,10 @@ class MctpCiNotifier(Star):
         crop_card(image_path)
         return base64.b64encode(Path(image_path).read_bytes()).decode("ascii")
 
-    def _prune_seen(self) -> None:
-        if len(self._seen) <= DEDUP_MAX:
-            return
-        cutoff = time.time() - DEDUP_TTL
-        self._seen = {key: ts for key, ts in self._seen.items() if ts >= cutoff}
-
     async def _health_payload(self) -> dict[str, Any]:
         return {
             "ok": True,
+            "delivery_ok": not self._last_error,
             "plugin": PLUGIN_NAME,
             "mode": self._mode,
             "targets": len(await self._targets()),

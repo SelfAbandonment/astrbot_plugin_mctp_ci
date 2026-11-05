@@ -28,8 +28,13 @@
     "_special": "umo"
   },
   "at_all_on_failure": {
-    "description": "失败通知是否 @全体成员",
+    "description": "未配置作者映射时，失败通知是否 @全体；配置作者映射后改为只 @匹配用户，未匹配不 @",
     "type": "bool",
     "default": false
+  },
+  "author_mentions": {
+    "description": "GitHub 作者到 QQ 用户 ID 的映射，每项格式 login=QQ号[,QQ号]，如 octocat=123456,234567",
+    "type": "list",
+    "default": []
   }
 }

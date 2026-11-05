@@ -37,6 +37,57 @@ RENDER_OPTIONS = {
 MAX_TITLE = 120
 MAX_TEXT = 160
 MAX_DETAILS = 8
+DEDUP_TTL = 120
+DEDUP_MAX = 100
+
+
+class DeliveryLedger:
+    """Track successful recipients so failed deliveries can be retried safely."""
+
+    def __init__(self, ttl: int = DEDUP_TTL, max_entries: int = DEDUP_MAX):
+        self.ttl = ttl
+        self.max_entries = max_entries
+        self._entries: dict[str, tuple[float, set[str]]] = {}
+
+    def pending(self, key: str, targets: list[str], now: float) -> list[str]:
+        self._prune(now)
+        if not targets:
+            return []
+
+        entry = self._entries.get(key)
+        if entry and now - entry[0] >= self.ttl:
+            del self._entries[key]
+            entry = None
+        if entry is None:
+            entry = (now, set())
+        else:
+            entry = (now, entry[1])
+        self._entries[key] = entry
+        self._prune(now)
+        return [target for target in targets if target not in entry[1]]
+
+    def mark_delivered(self, key: str, targets: list[str], now: float) -> None:
+        entry = self._entries.get(key)
+        if entry is None:
+            return
+        delivered = entry[1]
+        delivered.update(targets)
+        self._entries[key] = (now, delivered)
+        self._prune(now)
+
+    def complete(self, key: str, targets: list[str]) -> bool:
+        entry = self._entries.get(key)
+        return bool(targets) and entry is not None and all(target in entry[1] for target in targets)
+
+    def _prune(self, now: float) -> None:
+        self._entries = {
+            key: entry for key, entry in self._entries.items() if now - entry[0] < self.ttl
+        }
+        excess = len(self._entries) - self.max_entries
+        if excess > 0:
+            oldest = sorted(self._entries, key=lambda key: self._entries[key][0])[:excess]
+            for key in oldest:
+                del self._entries[key]
 
 
 def _text(value: Any, limit: int = MAX_TEXT) -> str:
@@ -82,6 +133,40 @@ def normalize_payload(data: Any) -> dict[str, Any]:
     }
     payload["id"] = payload_id(payload)
     return payload
+
+
+def normalize_author_mentions(entries: Any) -> tuple[dict[str, list[str]], int]:
+    """Parse GitHub login=QQ ID[,QQ ID] rows and count invalid settings."""
+    if isinstance(entries, str):
+        entries = entries.splitlines()
+    if not isinstance(entries, list):
+        return {}, int(bool(entries))
+
+    mappings: dict[str, list[str]] = {}
+    invalid = 0
+    for entry in entries:
+        if not isinstance(entry, str):
+            invalid += 1
+            continue
+        actor, separator, raw_ids = entry.partition("=")
+        actor = actor.strip()
+        if actor.startswith("@"):
+            actor = actor[1:]
+        actor = actor.casefold()
+        user_ids = [item.strip() for item in raw_ids.split(",")]
+        if (
+            not separator
+            or not actor
+            or not actor.isascii()
+            or not all(char.isalnum() or char == "-" for char in actor)
+            or not user_ids
+            or any(not user_id.isascii() or not user_id.isdecimal() for user_id in user_ids)
+        ):
+            invalid += 1
+            continue
+        mapped = mappings.setdefault(actor, [])
+        mapped.extend(user_id for user_id in user_ids if user_id not in mapped)
+    return mappings, invalid
 
 
 def payload_id(payload: dict[str, Any]) -> str:
@@ -130,7 +215,10 @@ def build_card_html(payload: dict[str, Any]) -> str:
 
     link_html = ""
     if payload.get("url"):
-        link_html = f'<div class="link">{esc(payload["url"])}</div>'
+        link_html = (
+            '<div class="link"><span class="link-label">查看构建</span>'
+            f'<span class="link-url">{esc(payload["url"])}</span></div>'
+        )
 
     subtitle_html = (
         f'<div class="subtitle">{esc(payload["subtitle"])}</div>' if payload.get("subtitle") else ""
@@ -193,12 +281,14 @@ def build_card_html(payload: dict[str, Any]) -> str:
     font-size: 27px;
     line-height: 1.35;
     letter-spacing: -0.01em;
+    overflow-wrap: anywhere;
   }}
   .subtitle {{
     margin-top: 4px;
     font-size: 16px;
     line-height: 1.55;
     color: #6b7280;
+    overflow-wrap: anywhere;
   }}
   .meta {{
     display: grid;
@@ -217,7 +307,7 @@ def build_card_html(payload: dict[str, Any]) -> str:
     display: inline-block;
     min-width: 52px;
     margin-right: 8px;
-    color: #9ca3af;
+    color: #6b7280;
     font-size: 13px;
   }}
   .details {{
@@ -233,6 +323,7 @@ def build_card_html(payload: dict[str, Any]) -> str:
     font-size: 14px;
     line-height: 1.5;
     color: #374151;
+    overflow-wrap: anywhere;
   }}
   .dot {{
     flex: 0 0 auto;
@@ -243,10 +334,21 @@ def build_card_html(payload: dict[str, Any]) -> str:
     opacity: 0.85;
   }}
   .link {{
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
     margin-top: 16px;
     padding: 10px 12px;
     border-radius: 10px;
     background: #f8fafc;
+    border-left: 3px solid {accent};
+  }}
+  .link-label {{
+    color: {accent};
+    font-size: 13px;
+    font-weight: 700;
+  }}
+  .link-url {{
     color: #475569;
     font-size: 12px;
     word-break: break-all;
@@ -258,7 +360,7 @@ def build_card_html(payload: dict[str, Any]) -> str:
     margin-top: 20px;
     padding-top: 14px;
     border-top: 1px solid #f1f5f9;
-    color: #9ca3af;
+    color: #6b7280;
     font-size: 12px;
   }}
 </style>
