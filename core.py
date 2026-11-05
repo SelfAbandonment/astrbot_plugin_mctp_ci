@@ -135,6 +135,40 @@ def normalize_payload(data: Any) -> dict[str, Any]:
     return payload
 
 
+def normalize_author_mentions(entries: Any) -> tuple[dict[str, list[str]], int]:
+    """Parse GitHub login=QQ ID[,QQ ID] rows and count invalid settings."""
+    if isinstance(entries, str):
+        entries = entries.splitlines()
+    if not isinstance(entries, list):
+        return {}, int(bool(entries))
+
+    mappings: dict[str, list[str]] = {}
+    invalid = 0
+    for entry in entries:
+        if not isinstance(entry, str):
+            invalid += 1
+            continue
+        actor, separator, raw_ids = entry.partition("=")
+        actor = actor.strip()
+        if actor.startswith("@"):
+            actor = actor[1:]
+        actor = actor.casefold()
+        user_ids = [item.strip() for item in raw_ids.split(",")]
+        if (
+            not separator
+            or not actor
+            or not actor.isascii()
+            or not all(char.isalnum() or char == "-" for char in actor)
+            or not user_ids
+            or any(not user_id.isascii() or not user_id.isdecimal() for user_id in user_ids)
+        ):
+            invalid += 1
+            continue
+        mapped = mappings.setdefault(actor, [])
+        mapped.extend(user_id for user_id in user_ids if user_id not in mapped)
+    return mappings, invalid
+
+
 def payload_id(payload: dict[str, Any]) -> str:
     """用于短时间去重：同一仓库/事件/标题/链接只发一次。"""
     raw = "|".join(

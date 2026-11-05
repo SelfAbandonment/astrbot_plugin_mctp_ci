@@ -30,6 +30,7 @@ try:  # 兼容 AstrBot 以包/单文件两种方式加载插件
         build_plain_text,
         crop_card,
         merge_targets,
+        normalize_author_mentions,
         normalize_payload,
         remove_targets,
         test_payload,
@@ -43,6 +44,7 @@ except ImportError:  # pragma: no cover - 单文件加载时的兜底
         build_plain_text,
         crop_card,
         merge_targets,
+        normalize_author_mentions,
         normalize_payload,
         remove_targets,
         test_payload,
@@ -66,6 +68,14 @@ class MctpCiNotifier(Star):
         self.config = config
         self._runner: web.AppRunner | None = None
         self._delivery = DeliveryLedger()
+        self._author_mentions, invalid_mentions = normalize_author_mentions(
+            self.config.get("author_mentions", [])
+        )
+        if invalid_mentions:
+            logger.warning(
+                "[MCTP-CI] 忽略了 %s 条格式无效的 author_mentions 配置",
+                invalid_mentions,
+            )
         self._last_error: str = ""
         self._mode = "standalone"
 
@@ -223,17 +233,29 @@ class MctpCiNotifier(Star):
             self._last_error = f"render: {exc}"
 
         text_fallback = build_plain_text(payload)
-        at_all = payload["status"] == "failure" and bool(
-            self.config.get("at_all_on_failure", False)
+        failure = payload["status"] == "failure"
+        at_all = (
+            failure
+            and bool(self.config.get("at_all_on_failure", False))
+            and not self._author_mentions
         )
+        mention_ids = []
+        if failure and self._author_mentions:
+            mention_ids = self._author_mentions.get(payload.get("actor", "").casefold(), [])
+
+        def append_mentions(chain: MessageChain) -> None:
+            if at_all:
+                chain.at_all()
+            else:
+                for user_id in mention_ids:
+                    chain.at(payload.get("actor") or "GitHub", user_id)
 
         sent: list[str] = []
         failed: list[str] = []
         for umo in targets:
             if image_data:
                 chain = MessageChain().base64_image(image_data)
-                if at_all:
-                    chain.at_all()
+                append_mentions(chain)
                 if payload.get("url"):
                     chain.message(f"查看构建：{payload['url']}")
                 try:
@@ -244,8 +266,7 @@ class MctpCiNotifier(Star):
                     logger.warning("[MCTP-CI] 发送图片到 %s 失败：%s", umo, exc)
             try:
                 fallback = MessageChain()
-                if at_all:
-                    fallback.at_all()
+                append_mentions(fallback)
                 fallback.message(text_fallback)
                 await self.context.send_message(umo, fallback)
                 sent.append(umo)

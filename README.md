@@ -52,7 +52,8 @@ git clone https://github.com/SelfAbandonment/astrbot_plugin_mctp_ci.git
    - `webhook_token`：随机长串，例如 `openssl rand -hex 24`
    - `listen_host` / `listen_port`：standalone 才用；dashboard 忽略，保持默认即可
    - `targets`：留空，之后在目标群发 `/ci_bind`
-   - `at_all_on_failure`：失败是否 @全体，默认关
+   - `author_mentions`：可选，每项格式 `GitHub登录名=QQ号[,QQ号]`，例如 `MrDai=123456,234567`
+   - `at_all_on_failure`：未配置作者映射时，失败是否 @全体，默认关
 4. 在目标群发 `/ci_test`，应收到一张“链路正常”的测试卡片。
 
 > 只声明 `Pillow`（见 `requirements.txt`）；`aiohttp` 由 AstrBot 核心提供，不要重复声明，否则会和核心版本约束冲突。
@@ -124,6 +125,7 @@ curl -fsS -X POST "http://<AstrBot地址>:6199/mctp-ci" \
 | `url` | 否 | 构建/PR/部署链接 |
 
 同一 `repo+event+status+title+url+commit` 在 2 分钟内对每个目标最多成功发送一次，避免 Jenkins 重试刷屏；失败目标会在重试时单独补发，没有绑定会话时不会消耗去重窗口。图片卡片后会附带可点击/复制的构建链接文本。
+失败通知包含 `actor` 且匹配 `author_mentions` 时，会在每个绑定群里 @ 该作者映射的所有 QQ 号；映射可一对多、登录名不区分大小写。作者未配置映射时不 @任何人。映射配置生效时优先于 `at_all_on_failure`；完全未配置映射时保留原有 @全体选项。
 
 ## 指令
 
@@ -177,6 +179,7 @@ post {
 - 503：`webhook_token` 没配置；
 - 卡片没图：检查 AstrBot 的 t2i/Chromium 是否正常，插件会自动回退纯文本。
 - `at_all_on_failure` 在图片发送和纯文本回退两种路径都会生效。
+- `author_mentions` 使用 GitHub login 到 QQ 用户 ID 的映射；`MCTP-Notify` 需要把 `ACTOR` 参数转发为 webhook JSON 的 `actor` 字段。
 
 ## 开发与测试
 

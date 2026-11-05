@@ -10,6 +10,7 @@ from core import (  # noqa: E402
     build_card_html,
     build_plain_text,
     merge_targets,
+    normalize_author_mentions,
     normalize_payload,
     remove_targets,
     sample_payload,
@@ -45,6 +46,13 @@ class NormalizePayloadTest(unittest.TestCase):
     def test_non_dict_payload(self):
         payload = normalize_payload("nope")
         self.assertEqual(payload["title"], "CI 通知")
+
+    def test_author_mentions_support_multiple_ids_and_case_insensitive_logins(self):
+        mappings, invalid = normalize_author_mentions(
+            ["MrDai=123456,234567", "mrdai=234567,345678", "bad mapping"]
+        )
+        self.assertEqual(mappings, {"mrdai": ["123456", "234567", "345678"]})
+        self.assertEqual(invalid, 1)
 
 
 class CardTest(unittest.TestCase):
