@@ -16,6 +16,11 @@
     "type": "bool",
     "default": true
   },
+  "release_wait_seconds": {
+    "description": "main PR 合并后等待部署的秒数，超时先发 PR 卡；默认 600 秒",
+    "type": "int",
+    "default": 600
+  },
   "listen_host": {
     "description": "standalone 模式的监听地址（dashboard 模式忽略）",
     "type": "string",

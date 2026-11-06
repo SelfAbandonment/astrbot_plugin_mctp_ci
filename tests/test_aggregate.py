@@ -101,6 +101,58 @@ class AggregateTest(unittest.TestCase):
         self.assertEqual(pending[0].key, action.key)
         self.assertEqual(pending[0].reason, "final")
 
+    def test_main_pr_waits_then_combines_with_deploy(self):
+        engine = AggregateEngine(release_wait=600)
+        fe = engine.ingest(
+            event(
+                event="pr_merge",
+                status="merged",
+                repo="MCTP-FE",
+                pr="72",
+                base_ref="main",
+                commit="fe12345",
+            ),
+            now=100,
+        )
+        api = engine.ingest(
+            event(
+                event="pr_merge",
+                status="merged",
+                repo="MCTP-API",
+                pr="68",
+                base_ref="main",
+                commit="api6789",
+            ),
+            now=101,
+        )
+        assert fe is not None and api is not None
+        self.assertEqual(fe.delay, 600)
+        self.assertEqual(api.delay, 600)
+        self.assertFalse(engine.aggregates[fe.key].terminal)
+        self.assertFalse(engine.aggregates[api.key].terminal)
+
+        deploy = engine.ingest(
+            event(
+                event="deploy",
+                status="success",
+                repo="MCTP",
+                pr="",
+                commit="",
+                release_key="fe12345:api6789",
+                title="生产部署完成",
+            ),
+            now=102,
+        )
+        assert deploy is not None
+        self.assertEqual(deploy.key, "release:fe12345:api6789")
+        self.assertNotIn(fe.key, engine.aggregates)
+        self.assertNotIn(api.key, engine.aggregates)
+        payload = engine.payload_for(deploy.key, deploy.reason)
+        assert payload is not None
+        self.assertEqual(payload["status"], "success")
+        self.assertIn("MCTP-FE PR #72 已合并", payload["details"])
+        self.assertIn("MCTP-API PR #68 已合并", payload["details"])
+
 
 if __name__ == "__main__":
     unittest.main()

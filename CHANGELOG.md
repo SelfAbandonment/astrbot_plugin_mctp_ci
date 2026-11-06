@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.5.0 - 2026-11-06
+
+### Added
+
+- main PR 合并后等待 deployment 事件，FE/API PR 与部署合并成一张 release 卡
+- deployment 事件可通过 `release_key=feSha:apiSha` 关联 main PR
+- `release_wait_seconds` 控制等待部署的超时时间，默认 600 秒
+
+### Changed
+
+- main PR 合并后不会立即发送 PR 卡；超时仍无部署才发 PR 卡
+- deployment 没有匹配 PR 时仍单独发送部署卡
+
 ## 0.4.0 - 2026-11-06
 
 ### Added

@@ -38,8 +38,10 @@ class Aggregate:
     repo: str
     pr: str = ""
     branch: str = ""
+    base_ref: str = ""
     actor: str = ""
     commit: str = ""
+    release_key: str = ""
     url: str = ""
     title: str = ""
     status: str = "info"
@@ -63,8 +65,10 @@ class Aggregate:
             "repo",
             "pr",
             "branch",
+            "base_ref",
             "actor",
             "commit",
+            "release_key",
             "url",
             "title",
             "status",
@@ -90,8 +94,10 @@ class Aggregate:
             "repo": self.repo,
             "pr": self.pr,
             "branch": self.branch,
+            "base_ref": self.base_ref,
             "actor": self.actor,
             "commit": self.commit,
+            "release_key": self.release_key,
             "url": self.url,
             "title": self.title,
             "status": self.status,
@@ -120,12 +126,13 @@ class AggregateAction:
 class AggregateEngine:
     """内存状态；持久化和定时由插件层负责。"""
 
-    def __init__(self) -> None:
+    def __init__(self, release_wait: float = 600.0) -> None:
         self.aggregates: dict[str, Aggregate] = {}
+        self.release_wait = release_wait
 
     @classmethod
-    def from_dict(cls, data: Any) -> AggregateEngine:
-        engine = cls()
+    def from_dict(cls, data: Any, release_wait: float = 600.0) -> AggregateEngine:
+        engine = cls(release_wait=release_wait)
         if not isinstance(data, dict):
             return engine
         for key, raw in data.items():
@@ -176,18 +183,22 @@ class AggregateEngine:
             return None
         if event not in {"ci", "pr", "pr_review", "pr_merge", "deploy", "lighthouse", "contract"}:
             return None
+        if event == "deploy":
+            return self._ingest_deploy(payload, now)
         key = _event_key(payload)
         agg = self.aggregates.get(key)
         if agg is None:
-            kind = "deploy" if event == "deploy" else ("pr" if payload.get("pr") else "ci")
+            kind = "pr" if payload.get("pr") else "ci"
             agg = Aggregate(
                 key=key,
                 kind=kind,
                 repo=_text(payload.get("repo"), 40) or "MCTP",
                 pr=_text(payload.get("pr"), 20),
                 branch=_text(payload.get("branch"), 80),
+                base_ref=_text(payload.get("base_ref"), 80),
                 actor=_text(payload.get("actor"), 80),
                 commit=_text(payload.get("commit"), 12),
+                release_key=_text(payload.get("release_key"), 100),
                 url=_text(payload.get("url"), 300),
                 title=_text(payload.get("title"), 120),
                 first_at=now,
@@ -206,6 +217,8 @@ class AggregateEngine:
         agg.actor = _text(payload.get("actor"), 80) or agg.actor
         agg.commit = _text(payload.get("commit"), 12) or agg.commit
         agg.branch = _text(payload.get("branch"), 80) or agg.branch
+        agg.base_ref = _text(payload.get("base_ref"), 80) or agg.base_ref
+        agg.release_key = _text(payload.get("release_key"), 100) or agg.release_key
         for detail in payload.get("details") or []:
             text = _text(detail, 120)
             if text and text not in agg.details:
@@ -215,15 +228,13 @@ class AggregateEngine:
             agg.event_ids.append(event_id)
             agg.event_ids = agg.event_ids[-MAX_EVENTS:]
 
-        if event == "deploy":
-            agg.kind = "deploy"
-            agg.status = status if status in {"success", "failure"} else "info"
-            agg.terminal = True
-            return self._schedule(agg, now, DEPLOY_DELAY, "final")
-
         if event == "pr_merge" or status == "merged":
             agg.status = "merged"
             agg.stages["merge"] = "已合并"
+            if agg.base_ref == "main":
+                # main 合并先挂起，等 release_key 对应的部署事件。
+                agg.terminal = False
+                return self._schedule(agg, now, self.release_wait, "final")
             agg.terminal = True
             return self._schedule(agg, now, FINAL_DELAY, "final")
 
@@ -247,6 +258,88 @@ class AggregateEngine:
 
         return self._pending_action(agg, now)
 
+    @staticmethod
+    def _same_commit(left: str, right: str) -> bool:
+        left = left.strip().lower()
+        right = right.strip().lower()
+        if not left or not right:
+            return False
+        length = min(len(left), len(right), 12)
+        return left[:length] == right[:length]
+
+    def _ingest_deploy(self, payload: dict[str, Any], now: float) -> AggregateAction:
+        status = _text(payload.get("status"), 20).lower()
+        release_key = _text(payload.get("release_key"), 100)
+        parts = [part for part in release_key.split(":") if part]
+        matched = [
+            agg
+            for agg in self.aggregates.values()
+            if agg.kind == "pr"
+            and agg.base_ref == "main"
+            and any(self._same_commit(agg.commit, part) for part in parts)
+        ]
+        matched_keys = {agg.key for agg in matched}
+        for key in matched_keys:
+            self.aggregates.pop(key, None)
+
+        if matched:
+            key = f"release:{release_key or matched[0].repo}"
+            agg = Aggregate(
+                key=key,
+                kind="release",
+                repo=" + ".join(sorted({item.repo for item in matched})),
+                branch="main",
+                base_ref="main",
+                actor=matched[0].actor,
+                commit=release_key[:12],
+                release_key=release_key,
+                title=_text(payload.get("title"), 120),
+                status=status if status in {"success", "failure"} else "info",
+                first_at=min(item.first_at for item in matched),
+                last_at=now,
+                terminal=True,
+            )
+            agg.details.extend(
+                f"{item.repo} PR #{item.pr} 已合并"
+                for item in sorted(matched, key=lambda item: item.repo)
+                if item.pr
+            )
+            for detail in payload.get("details") or []:
+                text = _text(detail, 120)
+                if text and text not in agg.details:
+                    agg.details.append(text)
+            self.aggregates[key] = agg
+            return self._schedule(agg, now, DEPLOY_DELAY, "final")
+
+        key = f"deploy:{release_key or _text(payload.get('repo'), 40) or 'MCTP'}"
+        agg = self.aggregates.get(key)
+        if agg is None:
+            agg = Aggregate(
+                key=key,
+                kind="deploy",
+                repo=_text(payload.get("repo"), 40) or "MCTP",
+                branch=_text(payload.get("branch"), 80),
+                base_ref=_text(payload.get("base_ref"), 80),
+                actor=_text(payload.get("actor"), 80),
+                commit=release_key[:12],
+                release_key=release_key,
+                url=_text(payload.get("url"), 300),
+                title=_text(payload.get("title"), 120),
+                status=status if status in {"success", "failure"} else "info",
+                first_at=now,
+                last_at=now,
+                terminal=True,
+            )
+            self.aggregates[key] = agg
+        agg.status = status if status in {"success", "failure"} else "info"
+        agg.url = _text(payload.get("url"), 300) or agg.url
+        agg.title = _text(payload.get("title"), 120) or agg.title
+        for detail in payload.get("details") or []:
+            text = _text(detail, 120)
+            if text and text not in agg.details:
+                agg.details.append(text)
+        return self._schedule(agg, now, DEPLOY_DELAY, "final")
+
     def _pending_action(self, agg: Aggregate, now: float) -> AggregateAction | None:
         if agg.flush_at is None:
             return None
@@ -261,9 +354,12 @@ class AggregateEngine:
         agg = self.aggregates.get(key)
         if agg is None:
             return None
-        if agg.kind == "deploy":
+        if agg.kind in {"deploy", "release"}:
             status = agg.status if agg.status in {"success", "failure"} else "info"
-            title = agg.title or f"{agg.repo} 部署通知"
+            if agg.kind == "release":
+                title = "MCTP 发布完成" if status == "success" else "MCTP 发布失败"
+            else:
+                title = agg.title or f"{agg.repo} 部署通知"
             event = "deploy"
         elif reason == "failure":
             status = "failure"
@@ -306,7 +402,7 @@ class AggregateEngine:
             details.append(f"合并：{merge}")
         if agg.kind == "pr":
             details.append("部署：不适用（PR 聚合）")
-        elif agg.kind == "deploy":
+        elif agg.kind in {"deploy", "release"}:
             details.append("部署：完成" if agg.status == "success" else "部署：失败")
         if len(agg.event_ids) > 1:
             details.append(f"聚合事件：{len(agg.event_ids)} 条")

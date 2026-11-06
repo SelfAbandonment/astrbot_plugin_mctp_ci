@@ -55,6 +55,7 @@ git clone https://github.com/SelfAbandonment/astrbot_plugin_mctp_ci.git
    - `author_mentions`：可选，每项格式 `GitHub登录名=QQ号[,QQ号]`，例如 `MrDai=123456,234567`
    - `mention_on`：哪些状态/事件 @ 作者，默认 `failure`、`approved`、`merged`
    - `aggregation_enabled`：默认开启；同一 PR 的审核/CI/合并合并成一张图
+   - `release_wait_seconds`：main PR 合并后等待部署的秒数，默认 600
    - `at_all_on_failure`：未配置作者映射时，失败是否 @全体，默认关
 4. 在目标群发 `/ci_test`，应收到一张“链路正常”的测试卡片。
 
@@ -132,17 +133,17 @@ curl -fsS -X POST "http://<AstrBot地址>:6199/mctp-ci" \
 
 ## 聚合通知
 
-0.4.0 起默认启用聚合：
+0.5.0 起默认启用：
 
 - 同一 `repo + PR` 的审核、CI 事件先缓存，不单独发图
-- `pr_merge` 到达后 5 秒发送一张汇总图
-- CI 失败 3 秒内单独告警；修复合并后再发最终汇总图
+- develop PR 合并后 5 秒发送一张汇总图
+- main PR 合并后先挂起，等待 deployment 或 `release_wait_seconds` 超时
+- deployment 带 `release_key=feSha:apiSha` 时，关联 FE/API main PR 并合成一张 release 卡
+- CI 失败 3 秒内单独告警；修复合并后再发最终图
 - PR 评论和普通 CI 成功不发送
-- 部署事件作为独立链发送，不修改已经发出的 PR 图
+- deployment 没有匹配 PR 时仍单独发送部署卡
 - 聚合队列写入 AstrBot KV，插件重载/重启后会恢复
 - 关闭 `aggregation_enabled` 可恢复逐条发送
-
-当前聚合版本不等待 main 部署后再发 PR 卡；main 合并和部署会分别成为两张卡。需要严格“一条发布链一张图”时，应使用后续的 release 聚合版本。
 
 ## 指令
 

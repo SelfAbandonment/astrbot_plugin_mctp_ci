@@ -70,7 +70,7 @@ PLUGIN_NAME = "astrbot_plugin_mctp_ci"
     PLUGIN_NAME,
     "SelfAbandonment",
     "MCTP Beacon · CI/CD 美观通知卡片（Jenkins / GitHub Actions）",
-    "0.4.0",
+    "0.5.0",
 )
 class MctpCiNotifier(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
@@ -97,7 +97,8 @@ class MctpCiNotifier(Star):
         self._last_error: str = ""
         self._mode = "standalone"
         self._aggregation_enabled = bool(self.config.get("aggregation_enabled", True))
-        self._aggregate_engine = AggregateEngine()
+        self._release_wait = float(self.config.get("release_wait_seconds", 600) or 600)
+        self._aggregate_engine = AggregateEngine(release_wait=self._release_wait)
         self._aggregate_timers: dict[str, asyncio.Task] = {}
         self._aggregate_lock: asyncio.Lock | None = None
 
@@ -201,7 +202,7 @@ class MctpCiNotifier(Star):
         except Exception:  # noqa: BLE001
             logger.exception("[MCTP-CI] 读取聚合队列失败，使用空队列")
             raw = {}
-        self._aggregate_engine = AggregateEngine.from_dict(raw)
+        self._aggregate_engine = AggregateEngine.from_dict(raw, release_wait=self._release_wait)
         now = time.time()
         for action in self._aggregate_engine.pending_actions(now):
             self._schedule_aggregate(action)
