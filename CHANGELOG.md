@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.1 - 2026-11-06
+
+### Fixed
+
+- webhook 归一化补上 `base_ref` / `release_key`，main PR 才会进入等待部署分支
+- 修复 0.5.0 因缺少字段导致 main PR 仍按 5 秒直接发送的问题
+
 ## 0.5.0 - 2026-11-06
 
 ### Added

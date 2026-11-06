@@ -70,7 +70,7 @@ PLUGIN_NAME = "astrbot_plugin_mctp_ci"
     PLUGIN_NAME,
     "SelfAbandonment",
     "MCTP Beacon · CI/CD 美观通知卡片（Jenkins / GitHub Actions）",
-    "0.5.0",
+    "0.5.1",
 )
 class MctpCiNotifier(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
