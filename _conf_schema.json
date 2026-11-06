@@ -22,7 +22,7 @@
     "default": 6199
   },
   "targets": {
-    "description": "默认通知会话（可留空，在群里发 /ci_bind 绑定）",
+    "description": "默认通知会话（可用 /ci_bind <QQ群号> 自动加入，也可在 WebUI 选择会话）",
     "type": "list",
     "default": [],
     "_special": "umo"
@@ -43,12 +43,12 @@
     "default": ["failure", "approved", "comment"]
   },
   "author_targets": {
-    "description": "按 PR 作者路由群，每项 login=UMO[,UMO]；配了作者路由后不再走全局 targets",
+    "description": "按 PR 作者路由群，每项 login=群号[,群号]，如 MrDai=123456；也支持完整 UMO",
     "type": "list",
     "default": []
   },
   "repo_targets": {
-    "description": "按仓库路由群，每项 REPO=UMO[,UMO]；没有作者路由时使用",
+    "description": "按仓库路由群，每项 REPO=群号[,群号]，如 MCTP-FE=123456；没有作者路由时使用",
     "type": "list",
     "default": []
   }

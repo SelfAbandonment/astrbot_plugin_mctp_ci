@@ -173,6 +173,19 @@ def normalize_author_mentions(entries: Any) -> tuple[dict[str, list[str]], int]:
     return mappings, invalid
 
 
+def normalize_target(value: Any) -> str:
+    """允许直接填 QQ 群号，统一转成 aiocqhttp 的 UMO。"""
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    lower = text.lower()
+    if lower.startswith("group:"):
+        text = text.split(":", 1)[1].strip()
+    if text.isdigit():
+        return f"aiocqhttp:GroupMessage:{text}"
+    return text
+
+
 def parse_target_map(entries: Any) -> tuple[dict[str, list[str]], int]:
     """Parse login/repo=UMO[,UMO] rows for per-author or per-repo routing."""
     if isinstance(entries, str):
@@ -188,7 +201,7 @@ def parse_target_map(entries: Any) -> tuple[dict[str, list[str]], int]:
             continue
         key, separator, raw_targets = entry.partition("=")
         key = key.strip().lstrip("@").casefold()
-        targets = [item.strip() for item in raw_targets.split(",")]
+        targets = [normalize_target(item) for item in raw_targets.split(",")]
         if (
             not separator
             or not key.isascii()
@@ -509,7 +522,7 @@ def merge_targets(configured, stored) -> list[str]:
     """合并配置与 KV 目标，去重并保持顺序。"""
     result: list[str] = []
     for item in list(configured or []) + list(stored or []):
-        text = str(item or "").strip()
+        text = normalize_target(item)
         if text and ":" in text and text not in result:
             result.append(text)
     return result

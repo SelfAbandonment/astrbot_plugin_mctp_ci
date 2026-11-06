@@ -51,11 +51,11 @@ git clone https://github.com/SelfAbandonment/astrbot_plugin_mctp_ci.git
    - `mode`：`dashboard`（只能开 6185）或 `standalone`（能开 6199）
    - `webhook_token`：随机长串，例如 `openssl rand -hex 24`
    - `listen_host` / `listen_port`：standalone 才用；dashboard 忽略，保持默认即可
-   - `targets`：留空，之后在目标群发 `/ci_bind`
+   - `targets`：留空，之后在目标群发 `/ci_bind`；也可 `/ci_bind <群号>` 直接绑定
    - `author_mentions`：可选，每项格式 `GitHub登录名=QQ号[,QQ号]`，例如 `MrDai=123456,234567`
    - `mention_on`：哪些状态/事件 @ 作者，默认 `failure`、`approved`、`comment`
-   - `author_targets`：按 PR 作者路由群，格式 `登录名=UMO[,UMO]`
-   - `repo_targets`：按仓库路由群，格式 `REPO=UMO[,UMO]`
+   - `author_targets`：按 PR 作者路由群，格式 `登录名=群号[,群号]`，例如 `MrDai=123456`
+   - `repo_targets`：按仓库路由群，格式 `REPO=群号[,群号]`，例如 `MCTP-FE=123456`
    - `at_all_on_failure`：未配置作者映射时，失败是否 @全体，默认关
 4. 在目标群发 `/ci_test`，应收到一张“链路正常”的测试卡片。
 
@@ -136,7 +136,9 @@ curl -fsS -X POST "http://<AstrBot地址>:6199/mctp-ci" \
 
 | 指令 | 作用 |
 |---|---|
-| `/ci_bind` | 把当前会话绑定为通知接收方 |
+| `/ci_bind` | 把当前群绑定为通知接收方 |
+| `/ci_bind <群号>` | 直接按 QQ 群号绑定（群号见 `/ci_groups`） |
+| `/ci_groups` | 查看机器人已加入的 QQ 群和群号 |
 | `/ci_unbind` | 解除当前会话绑定 |
 | `/ci_unbind <序号>` | 解除指定会话（序号见 `/ci_targets`） |
 | `/ci_unbind all` | 清空全部绑定 |

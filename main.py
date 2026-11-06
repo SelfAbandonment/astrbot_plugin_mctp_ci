@@ -33,6 +33,7 @@ try:  # 兼容 AstrBot 以包/单文件两种方式加载插件
         normalize_author_mentions,
         normalize_mention_on,
         normalize_payload,
+        normalize_target,
         parse_target_map,
         remove_targets,
         test_payload,
@@ -49,6 +50,7 @@ except ImportError:  # pragma: no cover - 单文件加载时的兜底
         normalize_author_mentions,
         normalize_mention_on,
         normalize_payload,
+        normalize_target,
         parse_target_map,
         remove_targets,
         test_payload,
@@ -64,7 +66,7 @@ PLUGIN_NAME = "astrbot_plugin_mctp_ci"
     PLUGIN_NAME,
     "SelfAbandonment",
     "MCTP Beacon · CI/CD 美观通知卡片（Jenkins / GitHub Actions）",
-    "0.3.0",
+    "0.3.1",
 )
 class MctpCiNotifier(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
@@ -175,13 +177,13 @@ class MctpCiNotifier(Star):
         configured = self.config.get("targets") or []
         if isinstance(configured, str):
             configured = [configured]
-        return [str(item or "").strip() for item in configured if str(item or "").strip()]
+        return [normalize_target(item) for item in configured if normalize_target(item)]
 
     async def _stored_targets(self) -> list[str]:
         stored = await self.get_kv_data("targets", [])
         if not isinstance(stored, list):
             return []
-        return [str(item or "").strip() for item in stored if str(item or "").strip()]
+        return [normalize_target(item) for item in stored if normalize_target(item)]
 
     async def _targets(self) -> list[str]:
         return merge_targets(self._configured_targets(), await self._stored_targets())
@@ -362,7 +364,9 @@ class MctpCiNotifier(Star):
         """查看 CI 通知指令说明。"""
         yield event.plain_result(
             "CI 通知指令：\n"
-            "/ci_bind 绑定当前会话\n"
+            "/ci_bind 绑定当前群\n"
+            "/ci_bind <群号> 绑定指定 QQ 群（群号见 /ci_groups）\n"
+            "/ci_groups 查看机器人已加入的 QQ 群和群号\n"
             "/ci_unbind 解除当前会话\n"
             "/ci_unbind <序号> 解除指定会话（序号见 /ci_targets）\n"
             "/ci_unbind all 清空全部绑定\n"
@@ -372,11 +376,15 @@ class MctpCiNotifier(Star):
 
     @filter.command("ci_bind")
     async def ci_bind(self, event: AstrMessageEvent):
-        """把当前会话绑定为 CI 通知接收方。"""
-        umo = event.unified_msg_origin
+        """绑定当前群，或按群号绑定指定 QQ 群。"""
+        arg = self._command_arg(event)
+        if arg and not arg.isdigit():
+            yield event.plain_result("用法：/ci_bind 或 /ci_bind <QQ群号>")
+            return
+        umo = normalize_target(arg) if arg else event.unified_msg_origin
         targets = await self._targets()
         if umo in targets:
-            yield event.plain_result("这个会话已经绑定过了。")
+            yield event.plain_result("这个群已经绑定过了。")
             return
         stored = await self._stored_targets()
         stored.append(umo)
@@ -437,6 +445,48 @@ class MctpCiNotifier(Star):
                 source = "会话"
             lines.append(f"{idx}. {item}（{source}）")
         yield event.plain_result("已绑定会话：\n" + "\n".join(lines))
+
+    @filter.command("ci_groups")
+    async def ci_groups(self, event: AstrMessageEvent):
+        """列出机器人已加入的 QQ 群，方便直接复制群号绑定。"""
+        groups: dict[str, str] = {}
+        errors: list[str] = []
+        try:
+            platforms = self.context.platform_manager.get_insts()
+        except Exception as exc:  # noqa: BLE001
+            platforms = []
+            errors.append(str(exc))
+        for platform in platforms:
+            try:
+                meta = platform.meta()
+                if getattr(meta, "name", "") not in {"aiocqhttp", "qq"}:
+                    continue
+                client = platform.get_client()
+                action = getattr(client, "call_action", None)
+                if action is None:
+                    action = getattr(getattr(client, "api", None), "call_action", None)
+                if action is None:
+                    continue
+                data = await action("get_group_list")
+                for item in data or []:
+                    group_id = str(item.get("group_id") or "").strip()
+                    if not group_id:
+                        continue
+                    groups[group_id] = str(item.get("group_name") or "未命名群").strip()
+            except Exception as exc:  # noqa: BLE001
+                errors.append(str(exc))
+        if not groups:
+            detail = f"（{errors[0]}）" if errors else ""
+            yield event.plain_result(
+                "没有取到群列表" + detail + "。可以先在目标群发 /ci_bind 绑定当前群。"
+            )
+            return
+        lines = [
+            f"{idx}. {name}（{group_id}）" for idx, (group_id, name) in enumerate(groups.items(), 1)
+        ]
+        yield event.plain_result(
+            "机器人已加入的 QQ 群：\n" + "\n".join(lines) + "\n\n绑定指定群：/ci_bind <群号>"
+        )
 
     @filter.command("ci_test")
     async def ci_test(self, event: AstrMessageEvent):

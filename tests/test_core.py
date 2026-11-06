@@ -13,6 +13,7 @@ from core import (  # noqa: E402
     normalize_author_mentions,
     normalize_mention_on,
     normalize_payload,
+    normalize_target,
     parse_target_map,
     remove_targets,
     sample_payload,
@@ -192,6 +193,20 @@ class RoutingTest(unittest.TestCase):
             normalize_mention_on("failure\napproved")[0],
             {"failure", "approved"},
         )
+
+    def test_group_number_shorthand(self):
+        self.assertEqual(normalize_target("123456"), "aiocqhttp:GroupMessage:123456")
+        self.assertEqual(normalize_target("group:123456"), "aiocqhttp:GroupMessage:123456")
+        self.assertEqual(
+            merge_targets(["123456"], ["aiocqhttp:GroupMessage:123456"]),
+            ["aiocqhttp:GroupMessage:123456"],
+        )
+        mappings, invalid = parse_target_map(["MrDai=123456,234567"])
+        self.assertEqual(
+            mappings,
+            {"mrdai": ["aiocqhttp:GroupMessage:123456", "aiocqhttp:GroupMessage:234567"]},
+        )
+        self.assertEqual(invalid, 0)
 
 
 if __name__ == "__main__":

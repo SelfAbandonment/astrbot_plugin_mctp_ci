@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.1 - 2026-11-06
+
+### Added
+
+- `targets` / `author_targets` / `repo_targets` 支持直接填 QQ 群号，插件自动转换为 UMO
+- `/ci_groups`：列出机器人已加入的 QQ 群和群号
+- `/ci_bind <群号>`：直接按群号绑定
+
+### Changed
+
+- `/ci_bind` 帮助文案改为“当前群”，支持群号参数
+
 ## 0.3.0 - 2026-11-06
 
 ### Added
