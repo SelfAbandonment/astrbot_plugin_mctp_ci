@@ -11,6 +11,11 @@
     "default": "",
     "secret": true
   },
+  "aggregation_enabled": {
+    "description": "启用聚合通知：审核/CI 先缓存，合并后发一张汇总图；关闭则逐条发送",
+    "type": "bool",
+    "default": true
+  },
   "listen_host": {
     "description": "standalone 模式的监听地址（dashboard 模式忽略）",
     "type": "string",
@@ -38,8 +43,8 @@
     "default": []
   },
   "mention_on": {
-    "description": "哪些状态/事件 @ 作者，如 failure、approved、comment、merged、pr_review、pr_comment、pr_merge",
+    "description": "哪些状态/事件 @ 作者，默认 failure、approved、merged",
     "type": "list",
-    "default": ["failure", "approved", "comment", "merged"]
+    "default": ["failure", "approved", "merged"]
   }
 }

@@ -9,6 +9,7 @@ CI 推送 JSON 后，插件用 AstrBot 的 html_render 渲染成 PNG 卡片，�
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import logging
 import time
@@ -55,6 +56,11 @@ except ImportError:  # pragma: no cover - 单文件加载时的兜底
         verify_token,
     )
 
+try:
+    from .aggregate import AggregateAction, AggregateEngine
+except ImportError:  # pragma: no cover
+    from aggregate import AggregateAction, AggregateEngine
+
 logger = logging.getLogger("astrbot")
 
 PLUGIN_NAME = "astrbot_plugin_mctp_ci"
@@ -64,7 +70,7 @@ PLUGIN_NAME = "astrbot_plugin_mctp_ci"
     PLUGIN_NAME,
     "SelfAbandonment",
     "MCTP Beacon · CI/CD 美观通知卡片（Jenkins / GitHub Actions）",
-    "0.3.3",
+    "0.4.0",
 )
 class MctpCiNotifier(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
@@ -76,7 +82,7 @@ class MctpCiNotifier(Star):
             self.config.get("author_mentions", [])
         )
         self._mention_on, invalid_mention_on = normalize_mention_on(
-            self.config.get("mention_on", ["failure", "approved", "comment", "merged"])
+            self.config.get("mention_on", ["failure", "approved", "merged"])
         )
         if invalid_mentions:
             logger.warning(
@@ -90,6 +96,10 @@ class MctpCiNotifier(Star):
             )
         self._last_error: str = ""
         self._mode = "standalone"
+        self._aggregation_enabled = bool(self.config.get("aggregation_enabled", True))
+        self._aggregate_engine = AggregateEngine()
+        self._aggregate_timers: dict[str, asyncio.Task] = {}
+        self._aggregate_lock: asyncio.Lock | None = None
 
     # ------------------------------------------------------------------ 生命周期
     async def initialize(self) -> None:
@@ -101,6 +111,9 @@ class MctpCiNotifier(Star):
 
         if not str(self.config.get("webhook_token") or ""):
             logger.warning("[MCTP-CI] webhook_token 未配置，webhook 会返回 503")
+
+        self._aggregate_lock = asyncio.Lock()
+        await self._load_aggregates()
 
         if self._mode == "dashboard":
             self.context.register_web_api(
@@ -151,6 +164,13 @@ class MctpCiNotifier(Star):
         logger.info("[MCTP-CI] standalone webhook 已启动：http://%s:%s/mctp-ci", host, port)
 
     async def terminate(self) -> None:
+        for task in list(self._aggregate_timers.values()):
+            task.cancel()
+        self._aggregate_timers.clear()
+        try:
+            await self._save_aggregates()
+        except Exception:  # noqa: BLE001 - 停止时持久化失败不应阻塞卸载
+            logger.exception("[MCTP-CI] 保存聚合队列失败")
         if self._runner is not None:
             try:
                 await self._runner.cleanup()
@@ -173,6 +193,104 @@ class MctpCiNotifier(Star):
 
     async def _targets(self) -> list[str]:
         return merge_targets(self._configured_targets(), await self._stored_targets())
+
+    # ------------------------------------------------------------------ 聚合队列
+    async def _load_aggregates(self) -> None:
+        try:
+            raw = await self.get_kv_data("aggregates", {})
+        except Exception:  # noqa: BLE001
+            logger.exception("[MCTP-CI] 读取聚合队列失败，使用空队列")
+            raw = {}
+        self._aggregate_engine = AggregateEngine.from_dict(raw)
+        now = time.time()
+        for action in self._aggregate_engine.pending_actions(now):
+            self._schedule_aggregate(action)
+        if self._aggregate_engine.aggregates:
+            logger.info(
+                "[MCTP-CI] 恢复 %s 条聚合链",
+                len(self._aggregate_engine.aggregates),
+            )
+
+    async def _save_aggregates(self) -> None:
+        await self.put_kv_data("aggregates", self._aggregate_engine.to_dict())
+
+    def _schedule_aggregate(self, action: AggregateAction) -> None:
+        old = self._aggregate_timers.pop(action.key, None)
+        if old is not None:
+            old.cancel()
+        task = asyncio.create_task(
+            self._flush_aggregate(action.key, action.version, action.reason, action.delay)
+        )
+        self._aggregate_timers[action.key] = task
+
+    async def _flush_aggregate(self, key: str, version: int, reason: str, delay: float) -> None:
+        try:
+            if delay > 0:
+                await asyncio.sleep(delay)
+            lock = self._aggregate_lock or asyncio.Lock()
+            async with lock:
+                agg = self._aggregate_engine.aggregates.get(key)
+                if agg is None or agg.version != version:
+                    return
+                payload = self._aggregate_engine.payload_for(key, reason)
+                if payload is None:
+                    self._aggregate_engine.discard(key)
+                    await self._save_aggregates()
+                    return
+                payload = normalize_payload(payload)
+                targets = await self._targets()
+                if not targets:
+                    self._last_error = "没有目标会话"
+                    agg.flush_at = time.time() + 60
+                    await self._save_aggregates()
+                    self._aggregate_timers.pop(key, None)
+                    self._schedule_aggregate(AggregateAction(key, agg.version, 60, reason))
+                    return
+
+                pending = self._delivery.pending(payload["id"], targets, time.time())
+                if not pending:
+                    self._aggregate_engine.finish(key, reason)
+                    await self._save_aggregates()
+                    return
+
+                sent, failed = await self._send_payload(payload, pending)
+                self._delivery.mark_delivered(payload["id"], sent, time.time())
+                if failed:
+                    self._last_error = f"发送失败：{len(failed)} 个目标未送达"
+                    agg.flush_at = time.time() + 30
+                    await self._save_aggregates()
+                    self._aggregate_timers.pop(key, None)
+                    self._schedule_aggregate(AggregateAction(key, agg.version, 30, reason))
+                    return
+                self._last_error = ""
+                self._aggregate_engine.finish(key, reason)
+                await self._save_aggregates()
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001
+            logger.exception("[MCTP-CI] 聚合链发送失败 key=%s", key)
+            self._last_error = "聚合发送失败"
+        finally:
+            current = asyncio.current_task()
+            if self._aggregate_timers.get(key) is current:
+                self._aggregate_timers.pop(key, None)
+
+    async def _enqueue_aggregate(self, payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+        lock = self._aggregate_lock or asyncio.Lock()
+        async with lock:
+            action = self._aggregate_engine.ingest(payload, time.time())
+            await self._save_aggregates()
+            if action is not None:
+                self._schedule_aggregate(action)
+        if action is None:
+            return 200, {"ok": True, "queued": False, "event": payload["event"]}
+        return 202, {
+            "ok": True,
+            "queued": True,
+            "chain": action.key,
+            "flush_in": round(action.delay, 1),
+            "event": payload["event"],
+        }
 
     async def _store_targets(self, targets: list[str]) -> None:
         await self.put_kv_data("targets", targets)
@@ -209,6 +327,9 @@ class MctpCiNotifier(Star):
         if not targets:
             self._last_error = "没有目标会话"
             return 409, {"ok": False, "error": "没有目标会话，先在群里发 /ci_bind"}
+
+        if self._aggregation_enabled:
+            return await self._enqueue_aggregate(payload)
 
         pending = self._delivery.pending(payload["id"], targets, time.time())
         if not pending:
@@ -302,6 +423,11 @@ class MctpCiNotifier(Star):
             "plugin": PLUGIN_NAME,
             "mode": self._mode,
             "targets": len(await self._targets()),
+            "aggregation": {
+                "enabled": self._aggregation_enabled,
+                "pending": len(self._aggregate_engine.aggregates),
+                "timers": len(self._aggregate_timers),
+            },
             "last_error": self._last_error,
         }
 
