@@ -64,7 +64,7 @@ PLUGIN_NAME = "astrbot_plugin_mctp_ci"
     PLUGIN_NAME,
     "SelfAbandonment",
     "MCTP Beacon · CI/CD 美观通知卡片（Jenkins / GitHub Actions）",
-    "0.3.2",
+    "0.3.3",
 )
 class MctpCiNotifier(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
@@ -76,7 +76,7 @@ class MctpCiNotifier(Star):
             self.config.get("author_mentions", [])
         )
         self._mention_on, invalid_mention_on = normalize_mention_on(
-            self.config.get("mention_on", ["failure", "approved", "comment"])
+            self.config.get("mention_on", ["failure", "approved", "comment", "merged"])
         )
         if invalid_mentions:
             logger.warning(

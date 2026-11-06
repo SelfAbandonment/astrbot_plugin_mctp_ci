@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.3 - 2026-11-06
+
+### Added
+
+- 新增 `merged` 状态和 `pr_merge` 事件：PR 被合并时通知作者
+- `mention_on` 默认值加入 `merged`
+
 ## 0.3.2 - 2026-11-06
 
 ### Removed

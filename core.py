@@ -16,6 +16,7 @@ STATUS_META = {
     "fixed": {"label": "已恢复", "accent": "#3E63DD", "soft": "#E8EDFB"},
     "approved": {"label": "已通过", "accent": "#2F9E44", "soft": "#E9F7EF"},
     "comment": {"label": "新评论", "accent": "#3E63DD", "soft": "#E8EDFB"},
+    "merged": {"label": "已合并", "accent": "#7C3AED", "soft": "#F1EAFE"},
     "info": {"label": "通知", "accent": "#6B7280", "soft": "#F3F4F6"},
 }
 
@@ -24,6 +25,7 @@ EVENT_LABELS = {
     "pr": "Pull Request",
     "pr_review": "PR 审核",
     "pr_comment": "PR 评论",
+    "pr_merge": "PR 合并",
     "branch": "分支构建",
     "deploy": "生产部署",
     "audit": "依赖巡检",

@@ -176,6 +176,7 @@ class TargetsTest(unittest.TestCase):
             {"failure", "approved", "comment"},
         )
         self.assertEqual(normalize_mention_on(["nope", "pr_review"])[1], 1)
+        self.assertEqual(normalize_mention_on(["merged"])[0], {"merged"})
         self.assertEqual(
             normalize_mention_on("failure\napproved")[0],
             {"failure", "approved"},

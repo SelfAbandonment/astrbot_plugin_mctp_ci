@@ -38,8 +38,8 @@
     "default": []
   },
   "mention_on": {
-    "description": "哪些状态/事件 @ 作者，如 failure、approved、comment、pr_review、pr_comment",
+    "description": "哪些状态/事件 @ 作者，如 failure、approved、comment、merged、pr_review、pr_comment、pr_merge",
     "type": "list",
-    "default": ["failure", "approved", "comment"]
+    "default": ["failure", "approved", "comment", "merged"]
   }
 }
