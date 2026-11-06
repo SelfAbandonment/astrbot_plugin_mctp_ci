@@ -186,35 +186,6 @@ def normalize_target(value: Any) -> str:
     return text
 
 
-def parse_target_map(entries: Any) -> tuple[dict[str, list[str]], int]:
-    """Parse login/repo=UMO[,UMO] rows for per-author or per-repo routing."""
-    if isinstance(entries, str):
-        entries = entries.splitlines()
-    if not isinstance(entries, list):
-        return {}, int(bool(entries))
-
-    mappings: dict[str, list[str]] = {}
-    invalid = 0
-    for entry in entries:
-        if not isinstance(entry, str):
-            invalid += 1
-            continue
-        key, separator, raw_targets = entry.partition("=")
-        key = key.strip().lstrip("@").casefold()
-        targets = [normalize_target(item) for item in raw_targets.split(",")]
-        if (
-            not separator
-            or not key.isascii()
-            or not all(char.isalnum() or char in "-_/." for char in key)
-            or any(":" not in target for target in targets)
-        ):
-            invalid += 1
-            continue
-        mapped = mappings.setdefault(key, [])
-        mapped.extend(target for target in targets if target not in mapped)
-    return mappings, invalid
-
-
 def normalize_mention_on(entries: Any) -> tuple[set[str], int]:
     """Parse statuses/events that should mention the mapped author."""
     if isinstance(entries, str):

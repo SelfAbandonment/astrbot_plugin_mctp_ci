@@ -41,15 +41,5 @@
     "description": "哪些状态/事件 @ 作者，如 failure、approved、comment、pr_review、pr_comment",
     "type": "list",
     "default": ["failure", "approved", "comment"]
-  },
-  "author_targets": {
-    "description": "按 PR 作者路由群，每项 login=群号[,群号]，如 MrDai=123456；也支持完整 UMO",
-    "type": "list",
-    "default": []
-  },
-  "repo_targets": {
-    "description": "按仓库路由群，每项 REPO=群号[,群号]，如 MCTP-FE=123456；没有作者路由时使用",
-    "type": "list",
-    "default": []
   }
 }

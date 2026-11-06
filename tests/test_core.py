@@ -14,7 +14,6 @@ from core import (  # noqa: E402
     normalize_mention_on,
     normalize_payload,
     normalize_target,
-    parse_target_map,
     remove_targets,
     sample_payload,
     status_meta,
@@ -171,18 +170,6 @@ class TargetsTest(unittest.TestCase):
     def test_invalid_targets_ignored(self):
         self.assertEqual(merge_targets(["bad", "  "], [None]), [])
 
-
-class RoutingTest(unittest.TestCase):
-    def test_parse_author_targets(self):
-        mappings, invalid = parse_target_map(
-            ["MrDai=aiocqhttp:GroupMessage:1,aiocqhttp:GroupMessage:2", "bad", "x="]
-        )
-        self.assertEqual(
-            mappings,
-            {"mrdai": ["aiocqhttp:GroupMessage:1", "aiocqhttp:GroupMessage:2"]},
-        )
-        self.assertEqual(invalid, 2)
-
     def test_mention_on_default_and_filter(self):
         self.assertEqual(
             normalize_mention_on(["failure", "approved", "comment"])[0],
@@ -201,12 +188,6 @@ class RoutingTest(unittest.TestCase):
             merge_targets(["123456"], ["aiocqhttp:GroupMessage:123456"]),
             ["aiocqhttp:GroupMessage:123456"],
         )
-        mappings, invalid = parse_target_map(["MrDai=123456,234567"])
-        self.assertEqual(
-            mappings,
-            {"mrdai": ["aiocqhttp:GroupMessage:123456", "aiocqhttp:GroupMessage:234567"]},
-        )
-        self.assertEqual(invalid, 0)
 
 
 if __name__ == "__main__":

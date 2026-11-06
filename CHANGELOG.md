@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.2 - 2026-11-06
+
+### Removed
+
+- 移除 `author_targets` / `repo_targets` 分流配置，避免过度设计
+- 通知统一下发到所有已绑定 `targets`；@ 作者仍由 `author_mentions` + `mention_on` 控制
+
 ## 0.3.1 - 2026-11-06
 
 ### Added

@@ -54,8 +54,6 @@ git clone https://github.com/SelfAbandonment/astrbot_plugin_mctp_ci.git
    - `targets`：留空，之后在目标群发 `/ci_bind`；也可 `/ci_bind <群号>` 直接绑定
    - `author_mentions`：可选，每项格式 `GitHub登录名=QQ号[,QQ号]`，例如 `MrDai=123456,234567`
    - `mention_on`：哪些状态/事件 @ 作者，默认 `failure`、`approved`、`comment`
-   - `author_targets`：按 PR 作者路由群，格式 `登录名=群号[,群号]`，例如 `MrDai=123456`
-   - `repo_targets`：按仓库路由群，格式 `REPO=群号[,群号]`，例如 `MCTP-FE=123456`
    - `at_all_on_failure`：未配置作者映射时，失败是否 @全体，默认关
 4. 在目标群发 `/ci_test`，应收到一张“链路正常”的测试卡片。
 
@@ -129,7 +127,6 @@ curl -fsS -X POST "http://<AstrBot地址>:6199/mctp-ci" \
 
 同一 `repo+event+status+title+url+commit` 在 2 分钟内对每个目标最多成功发送一次，避免 Jenkins 重试刷屏；失败目标会在重试时单独补发，没有绑定会话时不会消耗去重窗口。构建链接只放在卡片内部，不再额外发送图片下方的链接文本。
 `author_mentions` 匹配 `actor` 时，会按 `mention_on` 决定是否 @：默认失败、PR 通过、PR 评论都 @；映射可一对多、登录名不区分大小写。未配置映射时不 @任何人；`at_all_on_failure` 只在完全未配置 `author_mentions` 时生效。
-路由优先级：`author_targets`（按 PR 作者）> `repo_targets`（按仓库）> 全局 `targets`。未配置作者/仓库路由时行为跟以前一致。
 生产部署生命周期应由实际运行部署的 Jenkins job 在 start/success/failure/rollback 时调用通知入口，设置 `event: "deploy"`、`status`、`actor`、`url` 和当前结果明细。release workflow 收到 Jenkins 的 HTTP 接收响应不能当作部署成功；回滚状态需由 Jenkins 部署逻辑显式报告。
 
 ## 指令
