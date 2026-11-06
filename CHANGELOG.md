@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.3.0 - 2026-11-06
+
+### Added
+
+- `mention_on`：可配置哪些状态/事件 @ 作者，默认 `failure`、`approved`、`comment`
+- `author_targets`：按 PR 作者路由到指定群，格式 `login=UMO[,UMO]`
+- `repo_targets`：按仓库路由到指定群，格式 `REPO=UMO[,UMO]`
+- 新增 `approved` / `comment` 状态和 `pr_review` / `pr_comment` 事件渲染
+
+### Changed
+
+- 路由优先级：作者路由 > 仓库路由 > 全局 `targets`
+- 非 failure 状态现在也可以按 `mention_on` @ 映射用户
+
 ## 0.2.10 - 2026-11-06
 
 ### Changed

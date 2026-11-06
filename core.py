@@ -14,12 +14,16 @@ STATUS_META = {
     "success": {"label": "成功", "accent": "#2F9E44", "soft": "#E9F7EF"},
     "warning": {"label": "警告", "accent": "#D97706", "soft": "#FEF3C7"},
     "fixed": {"label": "已恢复", "accent": "#3E63DD", "soft": "#E8EDFB"},
+    "approved": {"label": "已通过", "accent": "#2F9E44", "soft": "#E9F7EF"},
+    "comment": {"label": "新评论", "accent": "#3E63DD", "soft": "#E8EDFB"},
     "info": {"label": "通知", "accent": "#6B7280", "soft": "#F3F4F6"},
 }
 
 EVENT_LABELS = {
     "ci": "CI",
     "pr": "Pull Request",
+    "pr_review": "PR 审核",
+    "pr_comment": "PR 评论",
     "branch": "分支构建",
     "deploy": "生产部署",
     "audit": "依赖巡检",
@@ -167,6 +171,53 @@ def normalize_author_mentions(entries: Any) -> tuple[dict[str, list[str]], int]:
         mapped = mappings.setdefault(actor, [])
         mapped.extend(user_id for user_id in user_ids if user_id not in mapped)
     return mappings, invalid
+
+
+def parse_target_map(entries: Any) -> tuple[dict[str, list[str]], int]:
+    """Parse login/repo=UMO[,UMO] rows for per-author or per-repo routing."""
+    if isinstance(entries, str):
+        entries = entries.splitlines()
+    if not isinstance(entries, list):
+        return {}, int(bool(entries))
+
+    mappings: dict[str, list[str]] = {}
+    invalid = 0
+    for entry in entries:
+        if not isinstance(entry, str):
+            invalid += 1
+            continue
+        key, separator, raw_targets = entry.partition("=")
+        key = key.strip().lstrip("@").casefold()
+        targets = [item.strip() for item in raw_targets.split(",")]
+        if (
+            not separator
+            or not key.isascii()
+            or not all(char.isalnum() or char in "-_/." for char in key)
+            or any(":" not in target for target in targets)
+        ):
+            invalid += 1
+            continue
+        mapped = mappings.setdefault(key, [])
+        mapped.extend(target for target in targets if target not in mapped)
+    return mappings, invalid
+
+
+def normalize_mention_on(entries: Any) -> tuple[set[str], int]:
+    """Parse statuses/events that should mention the mapped author."""
+    if isinstance(entries, str):
+        entries = entries.splitlines()
+    if not isinstance(entries, list):
+        return {"failure"}, int(bool(entries))
+    allowed = set(STATUS_META) | set(EVENT_LABELS)
+    result: set[str] = set()
+    invalid = 0
+    for entry in entries:
+        text = str(entry or "").strip().lower()
+        if text in allowed:
+            result.add(text)
+        else:
+            invalid += 1
+    return result, invalid
 
 
 def payload_id(payload: dict[str, Any]) -> str:

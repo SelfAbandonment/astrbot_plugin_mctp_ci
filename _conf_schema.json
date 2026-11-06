@@ -36,5 +36,20 @@
     "description": "GitHub 作者到 QQ 用户 ID 的映射，每项格式 login=QQ号[,QQ号]，如 octocat=123456,234567",
     "type": "list",
     "default": []
+  },
+  "mention_on": {
+    "description": "哪些状态/事件 @ 作者，如 failure、approved、comment、pr_review、pr_comment",
+    "type": "list",
+    "default": ["failure", "approved", "comment"]
+  },
+  "author_targets": {
+    "description": "按 PR 作者路由群，每项 login=UMO[,UMO]；配了作者路由后不再走全局 targets",
+    "type": "list",
+    "default": []
+  },
+  "repo_targets": {
+    "description": "按仓库路由群，每项 REPO=UMO[,UMO]；没有作者路由时使用",
+    "type": "list",
+    "default": []
   }
 }

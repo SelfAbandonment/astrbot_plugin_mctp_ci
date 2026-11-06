@@ -31,7 +31,9 @@ try:  # 兼容 AstrBot 以包/单文件两种方式加载插件
         crop_card,
         merge_targets,
         normalize_author_mentions,
+        normalize_mention_on,
         normalize_payload,
+        parse_target_map,
         remove_targets,
         test_payload,
         verify_token,
@@ -45,7 +47,9 @@ except ImportError:  # pragma: no cover - 单文件加载时的兜底
         crop_card,
         merge_targets,
         normalize_author_mentions,
+        normalize_mention_on,
         normalize_payload,
+        parse_target_map,
         remove_targets,
         test_payload,
         verify_token,
@@ -60,7 +64,7 @@ PLUGIN_NAME = "astrbot_plugin_mctp_ci"
     PLUGIN_NAME,
     "SelfAbandonment",
     "MCTP Beacon · CI/CD 美观通知卡片（Jenkins / GitHub Actions）",
-    "0.2.10",
+    "0.3.0",
 )
 class MctpCiNotifier(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
@@ -71,10 +75,30 @@ class MctpCiNotifier(Star):
         self._author_mentions, invalid_mentions = normalize_author_mentions(
             self.config.get("author_mentions", [])
         )
+        self._author_targets, invalid_author_targets = parse_target_map(
+            self.config.get("author_targets", [])
+        )
+        self._repo_targets, invalid_repo_targets = parse_target_map(
+            self.config.get("repo_targets", [])
+        )
+        self._mention_on, invalid_mention_on = normalize_mention_on(
+            self.config.get("mention_on", ["failure", "approved", "comment"])
+        )
         if invalid_mentions:
             logger.warning(
                 "[MCTP-CI] 忽略了 %s 条格式无效的 author_mentions 配置",
                 invalid_mentions,
+            )
+        if invalid_author_targets or invalid_repo_targets:
+            logger.warning(
+                "[MCTP-CI] 忽略了格式无效的路由配置：author_targets=%s repo_targets=%s",
+                invalid_author_targets,
+                invalid_repo_targets,
+            )
+        if invalid_mention_on:
+            logger.warning(
+                "[MCTP-CI] 忽略了 %s 条格式无效的 mention_on 配置",
+                invalid_mention_on,
             )
         self._last_error: str = ""
         self._mode = "standalone"
@@ -162,6 +186,16 @@ class MctpCiNotifier(Star):
     async def _targets(self) -> list[str]:
         return merge_targets(self._configured_targets(), await self._stored_targets())
 
+    async def _targets_for(self, payload: dict[str, Any]) -> list[str]:
+        """按作者、仓库路由；没有路由配置时回退到全局 targets。"""
+        actor = str(payload.get("actor") or "").casefold()
+        repo = str(payload.get("repo") or "").casefold()
+        if actor and self._author_targets.get(actor):
+            return list(self._author_targets[actor])
+        if repo and self._repo_targets.get(repo):
+            return list(self._repo_targets[repo])
+        return await self._targets()
+
     async def _store_targets(self, targets: list[str]) -> None:
         await self.put_kv_data("targets", targets)
 
@@ -193,7 +227,7 @@ class MctpCiNotifier(Star):
             payload["event"],
             payload["status"],
         )
-        targets = await self._targets()
+        targets = await self._targets_for(payload)
         if not targets:
             self._last_error = "没有目标会话"
             return 409, {"ok": False, "error": "没有目标会话，先在群里发 /ci_bind"}
@@ -234,13 +268,16 @@ class MctpCiNotifier(Star):
 
         text_fallback = build_plain_text(payload)
         failure = payload["status"] == "failure"
+        should_mention = (
+            payload["status"] in self._mention_on or payload["event"] in self._mention_on
+        )
         at_all = (
             failure
             and bool(self.config.get("at_all_on_failure", False))
             and not self._author_mentions
         )
         mention_ids = []
-        if failure and self._author_mentions:
+        if should_mention and self._author_mentions:
             mention_ids = self._author_mentions.get(payload.get("actor", "").casefold(), [])
 
         def append_mentions(chain: MessageChain) -> None:
