@@ -60,7 +60,7 @@ PLUGIN_NAME = "astrbot_plugin_mctp_ci"
     PLUGIN_NAME,
     "SelfAbandonment",
     "MCTP Beacon · CI/CD 美观通知卡片（Jenkins / GitHub Actions）",
-    "0.2.9",
+    "0.2.10",
 )
 class MctpCiNotifier(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
@@ -256,8 +256,6 @@ class MctpCiNotifier(Star):
             if image_data:
                 chain = MessageChain().base64_image(image_data)
                 append_mentions(chain)
-                if payload.get("url"):
-                    chain.message(f"查看构建：{payload['url']}")
                 try:
                     await self.context.send_message(umo, chain)
                     sent.append(umo)

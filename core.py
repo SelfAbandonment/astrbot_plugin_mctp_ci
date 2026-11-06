@@ -194,6 +194,8 @@ def build_card_html(payload: dict[str, Any]) -> str:
         if value:
             meta_rows.append(f'<div class="meta-item"><span>{esc(label)}</span>{esc(value)}</div>')
 
+    if payload.get("event_label"):
+        add_row("类型", payload["event_label"])
     if payload.get("pr"):
         add_row("PR", f"#{payload['pr']}")
     if payload.get("branch"):
